@@ -1,15 +1,16 @@
-// 화면: 근무표 표시, 칸 수정, 생성, 점검 결과, 저장, 이미지 내보내기.
+// 화면: 근무표 표시, 칸 수정, 생성, 점검 결과, 저장, 이미지 내보내기, 설정 화면 연결.
 (function () {
   'use strict';
   const R = window.Roster;
   const X = window.RosterExport;
+  const S = window.RosterSettings;
   const KEY = 'nurse-roster-v1';
   const $ = (id) => document.getElementById(id);
 
   const RULE_CHIP = {
-    coverage: '인원', seniorDaily: '선임 D', noOffUnlessRequested: '신청 외 off', allowed: '근무 종류',
-    offAfterN: 'N 다음날', maxConsecD: 'D 연속', weeklyOff: '주 off', nRange: 'N 횟수',
-    avoidConsecOff: 'off 연속', balance: '균등',
+    coverage: '인원', seniorDaily: '선임', noOffUnlessRequested: '신청 외 off', allowed: '근무 종류',
+    unavailDay: '안 하는 요일', offAfterN: 'N 다음날', maxConsecD: 'D 연속', weeklyOff: '주 off',
+    nRange: 'N 횟수', avoidConsecOff: 'off 연속', balance: '균등',
   };
 
   let store = load();
@@ -18,6 +19,7 @@
   let report = null;
   let focusIdx = null; // 선택한 위반 항목 {list, i}
   let justGenerated = false;
+  let pending = null; // 허용 오차 안에서 못 만들었을 때의 후보 { ym, auto, report }
   let busy = false;
   let previewBlob = null;
 
@@ -28,10 +30,10 @@
       const raw = localStorage.getItem(KEY);
       if (raw) {
         const s = JSON.parse(raw);
-        if (s && s.config && s.months) return s;
+        if (s && s.config && s.months) return R.normalize(s);
       }
     } catch (e) { /* 기본 데이터로 시작 */ }
-    const s = clone(window.RosterSeed);
+    const s = R.normalize(clone(window.RosterSeed));
     s.firstRun = true;
     return s;
   }
@@ -82,6 +84,14 @@
     }
   }
 
+  function checkWith(auto) {
+    const ym = store.current;
+    const tmp = Object.assign({}, store, {
+      months: Object.assign({}, store.months, { [ym]: Object.assign({}, month(), { auto }) }),
+    });
+    return R.check(store.config, tmp, ym);
+  }
+
   function generate(alt) {
     if (busy) return;
     if (!highs) {
@@ -98,21 +108,27 @@
         const seed = alt ? 1 + Math.floor(Math.random() * 1e9) : 0;
         res = R.solve(highs, store.config, store, store.current, seed);
       } catch (e) {
-        res = { ok: false, status: String(e && e.message || e) };
+        res = { ok: false, status: String((e && e.message) || e) };
       }
       busy = false;
       btn.removeAttribute('aria-busy');
       btn.querySelector('span').textContent = alt ? '다른 안 보기' : '근무표 만들기';
-      if (!res.ok) {
-        toast('근무표를 만들지 못했어요 (' + res.status + ')');
-        return;
-      }
-      month().auto = res.auto;
-      justGenerated = true;
       focusIdx = null;
-      save();
-      render();
-      toast(alt ? '다른 안을 만들었어요' : '근무표를 만들었어요');
+      if (res.ok) {
+        month().auto = res.auto;
+        pending = null;
+        justGenerated = true;
+        save();
+        render();
+        toast(alt ? '다른 안을 만들었어요' : '근무표를 만들었어요');
+      } else if (res.infeasible) {
+        pending = { ym: store.current, auto: res.candidate, report: checkWith(res.candidate) };
+        render();
+        toast('조건 안에서는 만들 수 없어요. 이유를 확인하세요.');
+        $('checkTitle').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        toast('근무표를 만들지 못했어요 (' + res.status + ')');
+      }
     }, 30);
   }
 
@@ -123,6 +139,7 @@
     $('monthLabel').textContent = `${y}년 ${m}월`;
     $('paperYm').textContent = `< ${y}년 ${m}월 >`;
     month();
+    if (pending && pending.ym !== ym) pending = null;
     report = R.check(store.config, store, ym);
     renderSheet();
     renderReport();
@@ -148,23 +165,34 @@
 
   function renderSheet() {
     const ym = store.current;
+    const cfg = store.config;
     const mo = month();
-    const days = R.monthDays(store.config, ym, mo);
+    const days = R.monthDays(cfg, ym, mo);
     const marks = cellMarks();
+    const hdAttr = (d) => {
+      if (!d) return '';
+      const can = R.workingDay(cfg, d.w);
+      const cls = (d.holiday ? ' hol' : '') + (can ? ' hd' : '');
+      const label = d.holiday ? `${R.dayLabel(ym, d.d)} 휴일. 누르면 근무일로 되돌려요` : `${R.dayLabel(ym, d.d)}. 누르면 휴일로 바꿔요`;
+      return can ? ` class="CLS${cls}" data-hd="${d.d}" tabindex="0" role="button" aria-label="${label}"` : ` class="CLS${cls}"`;
+    };
     let h = '<thead><tr><th class="corner" rowspan="2" aria-label="이름"></th>';
-    for (let i = 0; i < 31; i++) h += `<th class="dnum">${days[i] ? days[i].d : ''}</th>`;
+    for (let i = 0; i < 31; i++) {
+      const d = days[i];
+      h += `<th${hdAttr(d).replace('CLS', 'dnum') || ' class="dnum"'}>${d ? d.d : ''}</th>`;
+    }
     h += '<th colspan="2" class="dnum" style="font-family:var(--font-ui);font-weight:700">비고</th></tr><tr>';
     for (let i = 0; i < 31; i++) {
       const d = days[i];
-      h += `<th class="dyo${d && d.w === 0 ? ' sun' : ''}">${d ? R.YO[d.w] : ''}</th>`;
+      h += `<th${(hdAttr(d).replace('CLS', 'dyo' + (d && d.w === 0 ? ' sun' : '')) || ' class="dyo"')}>${d ? R.YO[d.w] : ''}</th>`;
     }
     h += '<th class="dyo"></th><th class="dyo vert" style="font-family:var(--font-paper);font-weight:400">연<br>차</th></tr></thead><tbody>';
-    for (const s of store.config.staff) {
+    for (const s of cfg.staff) {
       h += `<tr><th class="nm" scope="row">${esc(s.name)}</th>`;
       for (let i = 0; i < 31; i++) {
         const d = days[i];
         if (!d) { h += '<td class="blank31 none"></td>'; continue; }
-        if (d.closed) { h += '<td class="sun" aria-label="쉬는 날"></td>'; continue; }
+        if (d.closed) { h += `<td class="sun" aria-label="${d.holiday ? '휴일' : '쉬는 날'}"></td>`; continue; }
         const c = R.cellOf(mo, s.id, d.d);
         const key = s.id + '|' + d.d;
         const cls = ['c'];
@@ -190,11 +218,37 @@
     $('sheet').innerHTML = h;
   }
 
+  function item(v, list, i, clickable) {
+    const pressed = focusIdx && focusIdx.list === list && focusIdx.i === i;
+    const extra = v.days > 1 && v.pid ? ` (오차 ${v.days}일)` : '';
+    return `<li><button type="button"${clickable ? ` data-list="${list}" data-i="${i}" aria-pressed="${pressed}"` : ' disabled'}>` +
+      `<span class="chip${list === 'soft' ? ' soft' : ''}">${RULE_CHIP[v.rule] || v.rule}</span><span>${esc(v.msg)}${extra}</span></button></li>`;
+  }
+
+  function tolLines(rep, onlyOver) {
+    return rep.tolerance
+      .filter((t) => (onlyOver ? t.used > t.allowed : t.used > 0))
+      .map((t) => `<li><button type="button" disabled><span class="chip tol">오차</span><span>${esc(t.name)}: ${t.used}일 ${onlyOver ? '필요' : '사용'} (허용 ${t.allowed}일)</span></button></li>`)
+      .join('');
+  }
+
   function renderReport() {
     const banner = $('banner');
     const r = report;
-    const nFixed = Object.values(month().fixed || {}).reduce((a, o) => a + Object.keys(o).length, 0);
-    if (r.filled === 0 || (r.empty > 0 && !Object.keys(month().auto || {}).length)) {
+    const mo = month();
+    const nFixed = Object.values(mo.fixed || {}).reduce((a, o) => a + Object.keys(o).length, 0);
+    let hardHtml = r.hard.map((v, i) => item(v, 'hard', i, true)).join('');
+
+    if (pending) {
+      const p = pending.report;
+      banner.className = 'banner bad';
+      banner.innerHTML = `<strong>지금 조건과 허용 오차로는 근무표를 만들 수 없어요</strong>
+        <span>아래만큼 어기면 만들 수 있어요. 허용 오차를 늘리거나, 조건을 '가능하면'으로 바꾸거나, 신청을 조정해 보세요.</span>
+        <div class="bactions"><button type="button" class="btn" data-bact="apply">이 안이라도 적용</button>
+        <button type="button" class="btn" data-bact="settings">설정 열기</button>
+        <button type="button" class="btn" data-bact="dismiss">닫기</button></div>`;
+      hardHtml = p.hard.map((v, i) => item(v, 'hard', i, false)).join('') + tolLines(p, true);
+    } else if (r.filled === 0 || (r.empty > 0 && !Object.keys(mo.auto || {}).length)) {
       banner.className = 'banner info';
       banner.innerHTML = `<strong>아직 근무표가 없어요</strong><span>신청한 칸 ${nFixed}개. 칸을 눌러 신청을 넣고 [근무표 만들기]를 누르세요.${solverError ? ' ' + esc(solverError) : ''}</span>`;
     } else if (r.empty > 0) {
@@ -203,21 +257,18 @@
     } else if (!r.hard.length) {
       banner.className = 'banner ok';
       banner.innerHTML = `<strong>필수 조건을 모두 지켰어요</strong><span>${r.soft.length ? `가능하면 지킬 것 ${r.soft.length}건은 아래에서 확인하세요.` : '가능하면 지킬 것까지 모두 맞췄어요.'}</span>`;
-    } else if (justGenerated) {
-      banner.className = 'banner bad';
-      banner.innerHTML = `<strong>모든 조건을 지키는 근무표는 만들 수 없어요</strong><span>가장 적게 어긴 안이에요. 어긴 곳 ${r.hard.length}건을 눌러 확인하세요.</span>`;
+    } else if (r.withinTolerance) {
+      banner.className = 'banner warn';
+      banner.innerHTML = `<strong>허용 오차 안에서 만들었어요</strong><span>오차를 쓴 곳 ${r.hard.length}건이에요. 항목을 누르면 표에서 보여줘요.</span>`;
+      hardHtml += tolLines(r, false);
     } else {
       banner.className = 'banner bad';
-      banner.innerHTML = `<strong>조건에 어긋난 곳이 ${r.hard.length}건 있어요</strong><span>항목을 누르면 표에서 해당 칸을 보여줘요.</span>`;
+      banner.innerHTML = `<strong>조건에 어긋난 곳이 ${r.hard.length}건 있어요</strong><span>${justGenerated ? '적용한 안이에요. ' : ''}항목을 누르면 표에서 해당 칸을 보여줘요.</span>`;
+      hardHtml += tolLines(r, true);
     }
-    const item = (v, list, i) => {
-      const pressed = focusIdx && focusIdx.list === list && focusIdx.i === i;
-      return `<li><button type="button" data-list="${list}" data-i="${i}" aria-pressed="${pressed}">` +
-        `<span class="chip${list === 'soft' ? ' soft' : ''}">${RULE_CHIP[v.rule] || v.rule}</span><span>${esc(v.msg)}</span></button></li>`;
-    };
-    $('hardList').innerHTML = r.hard.map((v, i) => item(v, 'hard', i)).join('');
-    $('softList').innerHTML = r.soft.map((v, i) => item(v, 'soft', i)).join('');
-    $('softHead').hidden = !r.soft.length;
+    $('hardList').innerHTML = hardHtml;
+    $('softList').innerHTML = pending ? '' : r.soft.map((v, i) => item(v, 'soft', i, true)).join('');
+    $('softHead').hidden = pending || !r.soft.length;
     $('carryList').innerHTML = r.carry.map((c) => `<li><button type="button" disabled><span class="chip carry">이월</span><span>${esc(c)}</span></button></li>`).join('');
     $('carryHead').hidden = !r.carry.length;
   }
@@ -226,11 +277,14 @@
     const cfg = store.config;
     const r = report;
     const cats = cfg.balance;
+    const balanceOn = R.isOn(cfg.rules.balance);
     const spread = {};
     for (const cat of cats) {
       const group = cfg.staff.filter((s) => !(s.balanceExclude || []).includes(cat.key));
       const vals = group.map((s) => r.stats.find((x) => x.id === s.id)[cat.key]);
-      spread[cat.key] = { hi: Math.max(...vals), lo: Math.min(...vals), big: Math.max(...vals) - Math.min(...vals) >= 2 };
+      spread[cat.key] = vals.length
+        ? { hi: Math.max(...vals), lo: Math.min(...vals), big: balanceOn && cat.on && Math.max(...vals) - Math.min(...vals) >= 2 }
+        : { big: false };
     }
     let h = '<thead><tr><th>이름</th><th>근무</th><th>D</th><th>off</th>';
     for (const cat of cats) h += `<th>${esc(cat.label)}</th>`;
@@ -275,12 +329,20 @@
     const c = R.cellOf(month(), pid, d);
     editing = { pid, d };
     $('cellTitle').textContent = `${R.dayLabel(store.current, d)} · ${s.name}`;
-    $('cellSub').textContent = c.v
+    let sub = c.v
       ? (c.fixed ? `지금: ${R.LABEL[c.v]} (고정)` : `지금: ${R.LABEL[c.v]} (자동으로 채운 칸)`)
       : '지금: 빈 칸. 고르면 신청으로 고정돼요.';
+    if (R.unavail(s, R.weekday(store.current, d))) sub += ' · 설정에서 이 요일은 근무 안 함으로 정한 사람이에요.';
+    $('cellSub').textContent = sub;
     for (const b of $('choices').querySelectorAll('button')) b.classList.toggle('cur', b.dataset.v === c.v);
     $('unfixBtn').hidden = !c.fixed;
     openPanel($('cellPanel'));
+  }
+  function edited() {
+    justGenerated = false;
+    pending = null;
+    save();
+    render();
   }
   function setCell(v) {
     if (!editing) return;
@@ -288,10 +350,8 @@
     const { pid, d } = editing;
     (mo.fixed[pid] = mo.fixed[pid] || {})[d] = v;
     if (mo.auto[pid]) delete mo.auto[pid][d];
-    justGenerated = false;
     closePanel();
-    save();
-    render();
+    edited();
   }
   function unfixCell() {
     if (!editing) return;
@@ -302,10 +362,19 @@
       delete mo.fixed[pid][d];
       (mo.auto[pid] = mo.auto[pid] || {})[d] = v;
     }
-    justGenerated = false;
     closePanel();
-    save();
-    render();
+    edited();
+  }
+
+  function toggleHoliday(d) {
+    const mo = month();
+    const set = new Set(mo.holidays || []);
+    const on = !set.has(d);
+    if (on) set.add(d); else set.delete(d);
+    mo.holidays = [...set].sort((a, b) => a - b);
+    edited();
+    S.refresh();
+    toast(on ? `${R.dayLabel(store.current, d)}을 휴일로 정했어요` : `${R.dayLabel(store.current, d)}을 근무일로 되돌렸어요`);
   }
 
   let notePid = null;
@@ -319,8 +388,6 @@
   }
   function saveNote() {
     const mo = month();
-    mo.notes = mo.notes || {};
-    mo.leave = mo.leave || {};
     mo.notes[notePid] = $('noteText').value.trim();
     mo.leave[notePid] = $('leaveText').value.trim();
     closePanel();
@@ -338,20 +405,39 @@
   }
 
   // ---------- 이미지 ----------
-  async function openPreview() {
-    toast('이미지를 만드는 중이에요');
-    const canvas = await X.render(store, store.current);
-    previewBlob = await X.toBlob(canvas);
-    const url = URL.createObjectURL(previewBlob);
+  function exportOptions() {
+    store.exportOptions = store.exportOptions || { holidayRed: false };
+    return store.exportOptions;
+  }
+
+  // 옵션을 바꿀 때마다 다시 그린다. 늦게 끝난 이전 그리기가 새 결과를 덮지 않게 순번을 둔다.
+  let previewSeq = 0;
+  async function refreshPreview() {
+    const seq = ++previewSeq;
     const img = $('previewImg');
+    img.setAttribute('aria-busy', 'true');
+    const canvas = await X.render(store, store.current, exportOptions());
+    const blob = await X.toBlob(canvas);
+    if (seq !== previewSeq) return;
+    previewBlob = blob;
+    const url = URL.createObjectURL(blob);
     if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
     img.src = url;
     img.dataset.url = url;
     $('printImg').src = url;
+    img.removeAttribute('aria-busy');
+  }
+
+  async function openPreview() {
+    toast('이미지를 만드는 중이에요');
+    previewBlob = null;
+    $('optHolidayRed').checked = !!exportOptions().holidayRed;
+    await refreshPreview();
     $('previewHint').textContent = X.isIOS()
       ? '‘앨범에 저장’을 누르면 공유창이 열려요. 거기서 ‘이미지 저장’을 누르면 사진 앱에 들어가요. 사진을 길게 눌러 저장해도 돼요.'
       : '저장하면 갤러리의 ‘다운로드’ 앨범에 들어가요. 사진을 길게 눌러 저장해도 돼요.';
     $('preview').hidden = false;
+    document.documentElement.classList.add('locked');
     $('toast').hidden = true;
     $('shareBtn').focus();
   }
@@ -384,11 +470,12 @@
         return;
       }
       const n = Object.keys(data.months).length;
-      ask('백업 파일로 바꿀까요?', `지금 휴대폰에 있는 근무표가 백업 파일 내용(${n}개월)으로 바뀌어요.`, '바꾸기', () => {
-        store = data;
+      ask('백업 파일로 바꿀까요?', `지금 이 기기에 있는 근무표와 설정이 백업 파일 내용(${n}개월)으로 바뀌어요.`, '바꾸기', () => {
+        store = R.normalize(data);
         store.firstRun = false;
         if (!store.current) store.current = Object.keys(store.months).sort().pop();
         justGenerated = false;
+        pending = null;
         focusIdx = null;
         save();
         render();
@@ -398,15 +485,32 @@
     fr.readAsText(file);
   }
 
+  // ---------- 설정 화면 연결 ----------
+  S.init({
+    store: () => store,
+    month,
+    save,
+    changed: () => {
+      pending = null;
+      justGenerated = false;
+      focusIdx = null;
+      render();
+    },
+    ask,
+    toast,
+  });
+
   // ---------- 이벤트 ----------
   $('genBtn').addEventListener('click', () => generate(false));
   $('altBtn').addEventListener('click', () => generate(true));
   $('imgBtn').addEventListener('click', openPreview);
+  $('settingsBtn').addEventListener('click', () => S.open());
   $('prevMonth').addEventListener('click', () => moveMonth(-1));
   $('nextMonth').addEventListener('click', () => moveMonth(1));
   function moveMonth(delta) {
     store.current = R.shiftYm(store.current, delta);
     justGenerated = false;
+    pending = null;
     focusIdx = null;
     month();
     save();
@@ -414,6 +518,8 @@
   }
 
   $('sheet').addEventListener('click', (e) => {
+    const hd = e.target.closest('th[data-hd]');
+    if (hd) { toggleHoliday(+hd.dataset.hd); return; }
     const td = e.target.closest('td');
     if (!td) return;
     if (td.dataset.p) openCell(td.dataset.p, +td.dataset.d);
@@ -421,10 +527,10 @@
   });
   $('sheet').addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    const td = e.target.closest('td');
-    if (!td) return;
+    const el = e.target.closest('td, th[data-hd]');
+    if (!el) return;
     e.preventDefault();
-    td.click();
+    el.click();
   });
   $('choices').addEventListener('click', (e) => {
     const b = e.target.closest('button');
@@ -442,9 +548,28 @@
   document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', closePanel));
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (!$('preview').hidden) $('preview').hidden = true;
-    else closePanel();
+    if (openPanelEl) closePanel();
+    else if (!$('preview').hidden) closePreview();
+    else if (S.isOpen()) S.close();
     toggleMenu(false);
+  });
+
+  $('banner').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-bact]');
+    if (!b) return;
+    if (b.dataset.bact === 'apply' && pending) {
+      month().auto = pending.auto;
+      pending = null;
+      justGenerated = true;
+      save();
+      render();
+      toast('어긴 곳이 있는 안을 적용했어요');
+    } else if (b.dataset.bact === 'settings') {
+      S.open('people');
+    } else if (b.dataset.bact === 'dismiss') {
+      pending = null;
+      render();
+    }
   });
 
   const listClick = (e) => {
@@ -472,10 +597,8 @@
     toggleMenu(false);
     ask('자동으로 채운 칸을 비울까요?', '신청했거나 직접 고친 파란 칸은 그대로 남아요.', '비우기', () => {
       month().auto = {};
-      justGenerated = false;
       focusIdx = null;
-      save();
-      render();
+      edited();
     });
   });
   $('exportBtn').addEventListener('click', () => { toggleMenu(false); exportBackup(); });
@@ -486,7 +609,16 @@
     e.target.value = '';
   });
 
-  $('previewClose').addEventListener('click', () => { $('preview').hidden = true; });
+  function closePreview() {
+    $('preview').hidden = true;
+    if (!S.isOpen()) document.documentElement.classList.remove('locked');
+  }
+  $('previewClose').addEventListener('click', closePreview);
+  $('optHolidayRed').addEventListener('change', (e) => {
+    exportOptions().holidayRed = e.target.checked;
+    save();
+    refreshPreview();
+  });
   $('shareBtn').addEventListener('click', async () => {
     if (!previewBlob) return;
     const r = await X.share(previewBlob, X.fileName(store.current), title());

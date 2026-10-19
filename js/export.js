@@ -7,6 +7,8 @@
   const H = 2480;
   const SERIF = '"Nanum Myeongjo", "Batang", "AppleMyungjo", serif';
   const SANS = '"IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+  const HOLIDAY_FILL = '#F4A7A3';
+  const HOLIDAY_TEXT = '#9E1C17';
 
   // 앱을 열 때 미리 불러 두어 이미지 만들 때 기다리지 않게 한다.
   let fontsReady = null;
@@ -47,7 +49,9 @@
     return out;
   }
 
-  async function render(store, ym) {
+  // opts.holidayRed: 쉬는 날(일요일·휴일) 세로줄 전체와 사람별 off 칸을 빨간 배경으로 칠한다.
+  async function render(store, ym, opts) {
+    opts = opts || {};
     const cfg = store.config;
     const month = store.months[ym];
     await ensureFonts();
@@ -93,6 +97,22 @@
     ctx.font = `800 140px ${SERIF}`;
     ctx.fillText('간호사 SCHEDULE', (x0 + x1) / 2 + 60, 290);
 
+    if (opts.holidayRed) {
+      ctx.fillStyle = HOLIDAY_FILL;
+      for (let i = 0; i < 31; i++) {
+        const day = days[i];
+        if (!day) continue;
+        if (day.closed) {
+          ctx.fillRect(colX(i), y0, dayW, y1 - y0);
+          continue;
+        }
+        staff.forEach((s, r) => {
+          if (R.cellOf(month, s.id, day.d).v === 'O') ctx.fillRect(colX(i), yBody + rowH * r, dayW, rowH);
+        });
+      }
+      ctx.fillStyle = '#111';
+    }
+
     // 격자
     ctx.lineCap = 'square';
     line(ctx, x0, y0, x1, y0, 4);
@@ -113,12 +133,14 @@
       const cx = colX(i) + dayW / 2;
       const day = days[i];
       if (!day) continue;
+      ctx.fillStyle = opts.holidayRed && day.closed ? HOLIDAY_TEXT : '#111';
       ctx.font = `400 50px ${SERIF}`;
       ctx.fillText(String(day.d), cx, y0 + h1 / 2 + 2);
       ctx.font = `700 52px ${SANS}`;
       ctx.fillText(R.YO[day.w], cx, y0 + h1 + h2 / 2);
       if (day.w === 0) line(ctx, colX(i), yBody, colX(i + 1), yBody, 7);
     }
+    ctx.fillStyle = '#111';
     ctx.font = `700 46px ${SANS}`;
     ctx.fillText('비 고', noteX + (noteW + leaveW) / 2, y0 + h1 / 2 + 2);
     ctx.font = `400 40px ${SERIF}`;
