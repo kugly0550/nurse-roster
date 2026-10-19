@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>간호사 근무표</title>
+<meta name="theme-color" content="#ECEEF1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161A" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=Nanum+Myeongjo:wght@400;700;800&display=swap">
+<style>
+/* 배치: 상단 바(달 이동) → 행동 버튼 → 종이 근무표(가로 스크롤) → 점검 결과 → 개인별 횟수 */
+:root {
+  --bg: #ECEEF1;
+  --surface: #FFFFFF;
+  --surface-2: #F5F6F8;
+  --text: #1C2027;
+  --muted: #5A6170;
+  --line: #D3D7DE;
+  --ink: #2B3FA0;
+  --ink-hover: #22338A;
+  --ink-soft: #E7EBFA;
+  --on-ink: #FFFFFF;
+  --danger: #B3261E;
+  --danger-bg: #FBE9E7;
+  --ok: #1B6A44;
+  --ok-bg: #E3F2E9;
+  --warn: #855600;
+  --warn-bg: #FAF0DA;
+  --scrim: rgba(20, 22, 26, 0.45);
+  /* 종이는 어느 테마에서나 흰 종이로 둔다 */
+  --paper: #FFFFFF;
+  --paper-ink: #16181C;
+  --paper-line: #33363C;
+  --paper-fixed: #2B3FA0;
+  --paper-fixed-bg: #EEF1FC;
+  --paper-bad: #FBE1DE;
+  --paper-warn: #FBF0D6;
+  --paper-focus: #F6B7AF;
+  --font-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-paper: "Nanum Myeongjo", "AppleMyungjo", "Batang", serif;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161A; --surface: #1D2026; --surface-2: #252931; --text: #E6E8EC; --muted: #A0A7B4;
+    --line: #363B46; --ink: #9DB0FF; --ink-hover: #B6C4FF; --ink-soft: #273152; --on-ink: #10142A;
+    --danger: #FF9C92; --danger-bg: #3B201E; --ok: #86D8AA; --ok-bg: #173229; --warn: #F0C46E; --warn-bg: #362B15;
+    --scrim: rgba(0, 0, 0, 0.6); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14161A; --surface: #1D2026; --surface-2: #252931; --text: #E6E8EC; --muted: #A0A7B4;
+  --line: #363B46; --ink: #9DB0FF; --ink-hover: #B6C4FF; --ink-soft: #273152; --on-ink: #10142A;
+  --danger: #FF9C92; --danger-bg: #3B201E; --ok: #86D8AA; --ok-bg: #173229; --warn: #F0C46E; --warn-bg: #362B15;
+  --scrim: rgba(0, 0, 0, 0.6); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-ui);
+  font-size: 16px; line-height: 1.55;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+.wrap {
+  max-width: 1320px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+  display: grid; gap: 16px;
+}
+button { font: inherit; color: inherit; }
+button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible, input:focus-visible {
+  outline: 3px solid var(--ink); outline-offset: 2px;
+}
+[hidden] { display: none !important; }
+
+/* 상단 바 */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 14px 0; flex-wrap: wrap; }
+.brand { font-weight: 700; font-size: 18px; letter-spacing: -0.01em; }
+.brand small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 6px; }
+.monthnav { display: flex; align-items: center; gap: 4px; }
+.monthnav button { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); font-size: 20px; cursor: pointer; }
+.monthnav button:hover { background: var(--surface-2); }
+#monthLabel { font-family: var(--font-paper); font-weight: 700; font-size: 20px; min-width: 128px; text-align: center; font-variant-numeric: tabular-nums; }
+.savestate { font-size: 13px; color: var(--muted); }
+
+/* 행동 버튼 */
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn {
+  min-height: 48px; padding: 0 18px; border-radius: var(--radius); border: 1px solid var(--line);
+  background: var(--surface); font-weight: 500; font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+}
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--ink); color: var(--on-ink); border-color: var(--ink); font-weight: 700; }
+.btn.primary:hover { background: var(--ink-hover); }
+.btn[aria-busy="true"] { opacity: 0.7; cursor: progress; }
+.btn svg { width: 18px; height: 18px; flex: none; }
+.more { position: relative; margin-left: auto; }
+.menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 220px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+}
+.menu button { display: block; width: 100%; text-align: left; padding: 12px 12px; border: 0; background: none; border-radius: 8px; cursor: pointer; font-size: 15px; }
+.menu button:hover { background: var(--surface-2); }
+
+/* 종이 근무표 */
+.paper {
+  background: var(--paper); color: var(--paper-ink); border-radius: 6px; border: 1px solid var(--line);
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.paper-inner { min-width: max-content; padding: 18px 18px 20px; }
+.paper-title { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; margin-bottom: 14px; font-family: var(--font-paper); }
+.paper-title .ym { font-size: 16px; padding-left: 70px; }
+.paper-title .ttl { font-size: 30px; font-weight: 800; letter-spacing: 0.01em; }
+table.sheet { border-collapse: collapse; font-family: var(--font-paper); font-variant-numeric: tabular-nums; }
+.sheet th, .sheet td { border: 1px solid var(--paper-line); text-align: center; padding: 0; font-weight: 400; }
+.sheet .dnum { height: 30px; font-size: 14px; width: 36px; min-width: 36px; }
+.sheet .dyo { height: 40px; font-family: var(--font-ui); font-weight: 700; font-size: 14px; }
+.sheet .dyo.sun { border-bottom-width: 3px; }
+.sheet .corner {
+  width: 72px; min-width: 72px;
+  background: linear-gradient(to bottom left, transparent calc(50% - 0.6px), var(--paper-line) 50%, transparent calc(50% + 0.6px));
+}
+.sheet .nm {
+  position: sticky; left: 0; z-index: 2; background: var(--paper); font-family: var(--font-ui); font-weight: 700;
+  font-size: 15px; width: 72px; min-width: 72px; border-right-width: 3px; white-space: nowrap;
+}
+.sheet .corner { position: sticky; left: 0; z-index: 3; background-color: var(--paper); border-right-width: 3px; }
+.sheet td.c { width: 36px; min-width: 36px; height: 44px; font-size: 16px; cursor: pointer; position: relative; }
+.sheet td.c:hover { background: #F1F3F7; }
+.sheet td.c.fixed { color: var(--paper-fixed); font-weight: 700; background: var(--paper-fixed-bg); }
+.sheet td.c.off { font-size: 13px; }
+.sheet td.c.bad { background: var(--paper-bad); box-shadow: inset 0 0 0 2px #D9473B; }
+.sheet td.c.warn { background: var(--paper-warn); }
+.sheet td.c.focus { background: var(--paper-focus); box-shadow: inset 0 0 0 3px #B3261E; }
+.sheet td.sun, .sheet td.blank31 {
+  width: 36px; min-width: 36px;
+  background: linear-gradient(to bottom right, transparent calc(50% - 0.6px), var(--paper-line) 50%, transparent calc(50% + 0.6px));
+  cursor: default;
+}
+.sheet td.blank31 { background: none; }
+.sheet td.none { cursor: default; }
+.sheet .note { width: 96px; min-width: 96px; max-width: 96px; font-family: var(--font-ui); font-size: 12px; line-height: 1.3; padding: 2px 4px; cursor: pointer; word-break: keep-all; }
+.sheet .leave { width: 40px; min-width: 40px; cursor: pointer; font-size: 15px; }
+.sheet .note:hover, .sheet .leave:hover { background: #F1F3F7; }
+.sheet .vert { font-size: 13px; line-height: 1.15; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; border: 1px solid var(--line); }
+
+/* 점검 결과 */
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; }
+.card h2 { font-size: 15px; margin: 0 0 10px; font-weight: 700; }
+.banner { border-radius: 8px; padding: 12px 14px; display: grid; gap: 2px; }
+.banner strong { font-size: 16px; }
+.banner span { font-size: 14px; }
+.banner.ok { background: var(--ok-bg); color: var(--ok); }
+.banner.bad { background: var(--danger-bg); color: var(--danger); }
+.banner.info { background: var(--surface-2); color: var(--text); }
+.vlist { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.vlist button {
+  width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 8px;
+  padding: 10px 12px; cursor: pointer; display: flex; gap: 10px; align-items: baseline; font-size: 14px;
+}
+.vlist button:hover { background: var(--surface-2); }
+.vlist button[aria-pressed="true"] { border-color: var(--danger); }
+.chip { flex: none; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: var(--danger-bg); color: var(--danger); }
+.chip.soft { background: var(--warn-bg); color: var(--warn); }
+.chip.carry { background: var(--ink-soft); color: var(--ink); }
+.subhead { font-size: 13px; color: var(--muted); margin: 14px 0 0; font-weight: 500; }
+.stats { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.stats th, .stats td { padding: 7px 6px; text-align: center; border-bottom: 1px solid var(--line); }
+.stats th { font-weight: 500; color: var(--muted); font-size: 13px; }
+.stats td:first-child, .stats th:first-child { text-align: left; font-weight: 700; }
+.stats td.ex { color: var(--muted); }
+.stats td.hi { color: var(--danger); font-weight: 700; }
+.note-small { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+
+/* 아래에서 올라오는 창 */
+.scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 40; }
+.panel {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: var(--surface);
+  border-radius: 16px 16px 0 0; max-width: 560px; margin: 0 auto;
+  padding: 18px max(18px, env(safe-area-inset-left, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 14px; box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.18);
+}
+.panel h3 { margin: 0; font-size: 18px; }
+.panel .sub { margin: -8px 0 0; color: var(--muted); font-size: 14px; }
+.choices { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.choices button {
+  height: 64px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2);
+  font-family: var(--font-paper); font-size: 24px; font-weight: 700; cursor: pointer;
+}
+.choices button.cur { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.panel-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.panel-row .btn { flex: 1; justify-content: center; }
+.panel label { font-size: 14px; color: var(--muted); display: grid; gap: 6px; }
+.panel textarea, .panel input[type="text"] {
+  font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--surface-2); color: var(--text); width: 100%;
+}
+.panel textarea { min-height: 76px; resize: vertical; }
+
+/* 이미지 미리보기 */
+.preview { position: fixed; inset: 0; z-index: 60; background: var(--bg); overflow-y: auto; }
+.preview-inner {
+  max-width: 1100px; margin: 0 auto; display: grid; gap: 14px;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+.preview-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.preview-head h3 { margin: 0; font-size: 18px; }
+.preview img { width: 100%; height: auto; border: 1px solid var(--line); background: #fff; border-radius: 4px; }
+.hint { font-size: 14px; color: var(--muted); margin: 0; }
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  z-index: 70; background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 99px; font-size: 14px;
+  max-width: calc(100% - 32px);
+}
+#printArea { display: none; }
+@media print {
+  @page { size: A4 landscape; margin: 0; }
+  body { background: #fff; padding: 0; }
+  body > *:not(#printArea) { display: none !important; }
+  #printArea { display: block !important; }
+  #printArea img { width: 100%; height: auto; display: block; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .panel { animation: up 0.18s ease-out; }
+  @keyframes up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">간호사 근무표<small id="saveState">저장됨</small></div>
+    <nav class="monthnav" aria-label="달 이동">
+      <button id="prevMonth" type="button" aria-label="이전 달">‹</button>
+      <span id="monthLabel" aria-live="polite">2026년 11월</span>
+      <button id="nextMonth" type="button" aria-label="다음 달">›</button>
+    </nav>
+  </header>
+
+  <section class="actions" aria-label="근무표 작업">
+    <button class="btn primary" id="genBtn" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8 14h2M14 14h2M8 17h2"/></svg>
+      <span>근무표 만들기</span>
+    </button>
+    <button class="btn" id="altBtn" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.5M4 4v4.5h4.5M4 13a8 8 0 0 0 13.7 4.7L20 15.5M20 20v-4.5h-4.5"/></svg>
+      <span>다른 안 보기</span>
+    </button>
+    <button class="btn" id="imgBtn" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>
+      <span>이미지로 저장·공유</span>
+    </button>
+    <div class="more">
+      <button class="btn" id="moreBtn" type="button" aria-haspopup="true" aria-expanded="false">더 보기</button>
+      <div class="menu" id="moreMenu" hidden>
+        <button type="button" id="clearAutoBtn">자동으로 채운 칸 비우기</button>
+        <button type="button" id="exportBtn">백업 파일 만들기</button>
+        <button type="button" id="importBtn">백업 파일 불러오기</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
+  </section>
+
+  <section class="paper" aria-label="근무표">
+    <div class="paper-inner">
+      <div class="paper-title"><span class="ym" id="paperYm">&lt; 2026년 11월 &gt;</span><span class="ttl">간호사 SCHEDULE</span><span></span></div>
+      <table class="sheet" id="sheet"></table>
+    </div>
+  </section>
+  <div class="legend">
+    <span><i style="background:var(--paper-fixed-bg);border-color:var(--paper-fixed)"></i>파란 글씨: 신청했거나 직접 고친 칸 (다시 만들어도 그대로)</span>
+    <span><i style="background:var(--paper-bad)"></i>빨간 칸: 조건에 어긋난 곳</span>
+    <span>칸을 누르면 바꿀 수 있어요</span>
+  </div>
+
+  <div class="grid2">
+    <section class="card" aria-labelledby="checkTitle">
+      <h2 id="checkTitle">조건 점검</h2>
+      <div id="banner" class="banner info"><strong>불러오는 중</strong></div>
+      <ul class="vlist" id="hardList"></ul>
+      <p class="subhead" id="softHead" hidden>가능하면 지킬 것</p>
+      <ul class="vlist" id="softList"></ul>
+      <p class="subhead" id="carryHead" hidden>다음 달로 넘어가는 것</p>
+      <ul class="vlist" id="carryList"></ul>
+    </section>
+    <section class="card" aria-labelledby="statsTitle">
+      <h2 id="statsTitle">개인별 횟수</h2>
+      <table class="stats" id="stats"></table>
+      <p class="note-small">빨간 숫자는 다른 사람과 2회 이상 차이 나는 항목이에요. 회색은 균등 계산에서 빠진 사람이에요.</p>
+    </section>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<div class="panel" id="cellPanel" role="dialog" aria-modal="true" aria-labelledby="cellTitle" hidden>
+  <h3 id="cellTitle"></h3>
+  <p class="sub" id="cellSub"></p>
+  <div class="choices" id="choices">
+    <button type="button" data-v="D">D</button>
+    <button type="button" data-v="E">E</button>
+    <button type="button" data-v="N">N</button>
+    <button type="button" data-v="O">off</button>
+  </div>
+  <div class="panel-row">
+    <button class="btn" type="button" id="unfixBtn">고정 풀기</button>
+    <button class="btn" type="button" data-close>닫기</button>
+  </div>
+</div>
+
+<div class="panel" id="notePanel" role="dialog" aria-modal="true" aria-labelledby="noteTitle" hidden>
+  <h3 id="noteTitle"></h3>
+  <label>비고<textarea id="noteText" maxlength="60"></textarea></label>
+  <label>연차<input type="text" id="leaveText" maxlength="6" inputmode="numeric"></label>
+  <div class="panel-row">
+    <button class="btn primary" type="button" id="noteSave">저장</button>
+    <button class="btn" type="button" data-close>닫기</button>
+  </div>
+</div>
+
+<div class="panel" id="confirmPanel" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" hidden>
+  <h3 id="confirmTitle"></h3>
+  <p class="sub" id="confirmSub"></p>
+  <div class="panel-row">
+    <button class="btn primary" type="button" id="confirmOk">확인</button>
+    <button class="btn" type="button" data-close>취소</button>
+  </div>
+</div>
+
+<div class="preview" id="preview" role="dialog" aria-modal="true" aria-labelledby="previewTitle" hidden>
+  <div class="preview-inner">
+    <div class="preview-head">
+      <h3 id="previewTitle">근무표 이미지</h3>
+      <button class="btn" type="button" id="previewClose">닫기</button>
+    </div>
+    <div class="actions">
+      <button class="btn primary" type="button" id="shareBtn">공유하기 (카톡 등)</button>
+      <button class="btn" type="button" id="saveBtn">앨범에 저장</button>
+      <button class="btn" type="button" id="printBtn">인쇄</button>
+    </div>
+    <p class="hint" id="previewHint"></p>
+    <img id="previewImg" alt="A4 가로 근무표 이미지">
+  </div>
+</div>
+
+<div id="printArea"><img id="printImg" alt=""></div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="vendor/highs.js"></script>
+<script src="js/data.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/export.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
