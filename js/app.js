@@ -286,21 +286,42 @@
         ? { hi: Math.max(...vals), lo: Math.min(...vals), big: balanceOn && cat.on && Math.max(...vals) - Math.min(...vals) >= 2 }
         : { big: false };
     }
-    let h = '<thead><tr><th>이름</th><th>근무</th><th>D</th><th>off</th>';
-    for (const cat of cats) h += `<th>${esc(cat.label)}</th>`;
+
+    // 기본 근무 형태는 균등 설정과 관계없이 항상 보여 준다.
+    // E/N/전체 off가 균등 항목에도 있어도 열은 중복 표시하지 않는다.
+    const base = [
+      { key: 'work', label: '근무' },
+      { key: 'D', label: 'D' },
+      { key: 'E', label: 'E' },
+      { key: 'N', label: 'N' },
+      { key: 'O', label: 'off' },
+    ];
+    const extra = cats.filter((cat) => !['D', 'E', 'N', 'O'].includes(cat.key));
+    const columns = base.concat(extra);
+
+    function cell(row, s, key) {
+      const cat = cats.find((c) => c.key === key);
+      const excluded = !!cat && (s.balanceExclude || []).includes(key);
+      const sp = spread[key];
+      const warn = !!cat && !excluded && r.complete && sp && sp.big && (row[key] === sp.hi || row[key] === sp.lo);
+      return `<td class="${excluded ? 'ex' : warn ? 'hi' : ''}">${row[key] || 0}</td>`;
+    }
+
+    let h = '<thead><tr><th scope="col">이름</th>';
+    for (const col of columns) h += `<th scope="col">${esc(col.label)}</th>`;
     h += '</tr></thead><tbody>';
     for (const row of r.stats) {
       const s = staffById(row.id);
-      h += `<tr><td>${esc(row.name)}</td><td>${row.work}</td><td>${row.D}</td><td>${row.O}</td>`;
-      for (const cat of cats) {
-        const ex = (s.balanceExclude || []).includes(cat.key);
-        const sp = spread[cat.key];
-        const hi = !ex && r.complete && sp.big && (row[cat.key] === sp.hi || row[cat.key] === sp.lo);
-        h += `<td class="${ex ? 'ex' : hi ? 'hi' : ''}">${row[cat.key]}</td>`;
-      }
+      h += `<tr><th scope="row">${esc(row.name)}</th>`;
+      for (const col of columns) h += cell(row, s, col.key);
       h += '</tr>';
     }
-    $('stats').innerHTML = h + '</tbody>';
+    h += '<tr class="stats-total"><th scope="row">합계</th>';
+    for (const col of columns) {
+      const sum = r.stats.reduce((n, row) => n + (Number(row[col.key]) || 0), 0);
+      h += `<td>${sum}</td>`;
+    }
+    $('stats').innerHTML = h + '</tr></tbody>';
   }
 
   // ---------- 아래 창 ----------
