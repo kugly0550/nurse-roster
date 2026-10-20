@@ -41,6 +41,7 @@
     },
     // 한 달 기준으로 가능하면 균등하게 맞출 항목
     balance: [
+      { key: 'O', label: '전체 off', shift: 'O', weekdays: null, on: true },
       { key: 'satOff', label: '토 off', shift: 'O', weekdays: [6], on: true },
       { key: 'E', label: 'E', shift: 'E', weekdays: null, on: true },
       { key: 'N', label: 'N', shift: 'N', weekdays: null, on: true },
