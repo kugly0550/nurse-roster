@@ -73,6 +73,11 @@
       if (!r.level) r.level = 'hard';
     }
     if (cfg.rules.balance.level === 'hard') cfg.rules.balance.level = 'soft';
+    // 이미 저장된 설정에도 새 균등 항목을 추가한다. 사용자가 꺼 둔 값은 유지한다.
+    if (!Array.isArray(cfg.balance)) cfg.balance = [];
+    if (!cfg.balance.some((c) => c.key === 'O')) {
+      cfg.balance.unshift({ key: 'O', label: '전체 off', shift: 'O', weekdays: null, on: true });
+    }
     for (const c of cfg.balance) if (c.on === undefined) c.on = true;
     cfg.dropOrder = (cfg.dropOrder || []).filter((k) => ['D', 'E', 'N'].includes(k));
     store.exportOptions = store.exportOptions || { holidayRed: false };
