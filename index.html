@@ -173,7 +173,9 @@ table.sheet { border-collapse: collapse; font-family: var(--font-paper); font-va
 .chip.soft { background: var(--warn-bg); color: var(--warn); }
 .chip.carry { background: var(--ink-soft); color: var(--ink); }
 .subhead { font-size: 13px; color: var(--muted); margin: 14px 0 0; font-weight: 500; }
-.stats { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.stats-scroll { overflow-x: auto; max-width: 100%; }
+.stats { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stats-total th, .stats-total td { background: var(--surface-2); border-top: 2px solid var(--line); font-weight: 700; }
 .stats th, .stats td { padding: 7px 6px; text-align: center; border-bottom: 1px solid var(--line); }
 .stats th { font-weight: 500; color: var(--muted); font-size: 13px; }
 .stats td:first-child, .stats th:first-child { text-align: left; font-weight: 700; }
@@ -389,8 +391,10 @@ html.locked, html.locked body { overflow: hidden; }
       <ul class="vlist" id="carryList"></ul>
     </section>
     <section class="card" aria-labelledby="statsTitle">
-      <h2 id="statsTitle">개인별 횟수</h2>
-      <table class="stats" id="stats"></table>
+      <h2 id="statsTitle">근무 횟수</h2>
+      <div class="stats-scroll" role="region" aria-label="직원별 근무 횟수 및 합계" tabindex="0">
+        <table class="stats" id="stats"></table>
+      </div>
       <p class="note-small">빨간 숫자는 다른 사람과 2회 이상 차이 나는 항목이에요. 회색은 균등 계산에서 빠진 사람이에요.</p>
     </section>
   </div>
@@ -475,10 +479,10 @@ html.locked, html.locked body { overflow: hidden; }
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="vendor/highs.js"></script>
-<script src="js/data.js?v=5"></script>
-<script src="js/rules.js?v=5"></script>
+<script src="js/data.js?v=6"></script>
+<script src="js/rules.js?v=6"></script>
 <script src="js/export.js?v=5"></script>
 <script src="js/settings.js?v=5"></script>
-<script src="js/app.js?v=5"></script>
+<script src="js/app.js?v=6"></script>
 </body>
 </html>
